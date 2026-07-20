@@ -1,19 +1,32 @@
-import React, { useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { useScamStore } from '../store/useScamStore';
 import CallSimulator from '../components/CallSimulator';
 
-export default function DashboardScreen({ socketActions, navigation, BACKEND_URL }) {
+export default function DashboardScreen({ socketActions, navigation, BACKEND_URL, setBackendUrl, isConnected }) {
   const isCallActive = useScamStore((state) => state.isCallActive);
   const reports = useScamStore((state) => state.reports);
   const stats = useScamStore((state) => state.stats);
   const fetchReports = useScamStore((state) => state.fetchReports);
   const fetchStats = useScamStore((state) => state.fetchStats);
+  const startCall = useScamStore((state) => state.startCall);
+
+  const [manualNumber, setManualNumber] = useState('+91 90000 01930');
+  const [manualName, setManualName] = useState('Suspected Officer');
+  const [tempUrl, setTempUrl] = useState(BACKEND_URL);
 
   useEffect(() => {
     fetchReports(BACKEND_URL);
     fetchStats(BACKEND_URL);
-  }, []);
+  }, [BACKEND_URL]);
+
+  const handleManualCallStart = () => {
+    const num = manualNumber.trim() || '+91 90000 01930';
+    const name = manualName.trim() || 'Suspected Officer';
+    startCall(num, name);
+    socketActions.startCall(num, name);
+    navigation('scanner');
+  };
 
   const totalPrevented = reports.filter(r => r.threatScore > 40).length;
 
@@ -33,10 +46,62 @@ export default function DashboardScreen({ socketActions, navigation, BACKEND_URL
         <Text style={styles.shieldStatus}>
           {isCallActive ? 'CALL SCANNER RUNNING' : 'SHIELD ACTIVE & MONITORING'}
         </Text>
-        <Text style={styles.shieldDesc}>
-          {isCallActive 
-            ? 'Analyzing live interaction for Digital Arrest patterns...' 
-            : 'SafeCall is silently waiting for incoming call activations.'}
+        
+        {isCallActive ? (
+          <Text style={styles.shieldDesc}>
+            Analyzing live interaction for Digital Arrest patterns...
+          </Text>
+        ) : (
+          <View style={styles.manualDialerContainer}>
+            <Text style={styles.manualDialerTitle}>📞 Suspect a Scam? Activate Shield</Text>
+            <View style={styles.manualInputGroup}>
+              <TextInput
+                style={styles.manualInput}
+                placeholder="Caller Phone Number"
+                placeholderTextColor="#64748b"
+                value={manualNumber}
+                onChangeText={setManualNumber}
+              />
+              <TextInput
+                style={styles.manualInput}
+                placeholder="Caller Identity / Name"
+                placeholderTextColor="#64748b"
+                value={manualName}
+                onChangeText={setManualName}
+              />
+            </View>
+            <TouchableOpacity 
+              style={styles.manualButton} 
+              onPress={handleManualCallStart}
+            >
+              <Text style={styles.manualButtonText}>🔴 ACTIVATE SHIELD NOW</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      {/* Connection Settings Box */}
+      <View style={styles.settingsCard}>
+        <Text style={styles.settingsTitle}>⚙️ Backend Link Config</Text>
+        <View style={styles.settingsRow}>
+          <TextInput
+            style={styles.settingsInput}
+            value={tempUrl}
+            onChangeText={setTempUrl}
+            placeholder="Backend IP e.g. http://192.168.1.15:5000"
+            placeholderTextColor="#64748b"
+          />
+          <TouchableOpacity 
+            style={styles.settingsSaveBtn}
+            onPress={() => setBackendUrl(tempUrl)}
+          >
+            <Text style={styles.settingsSaveText}>Connect</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.settingsStatus}>
+          Status: <Text style={isConnected ? styles.statusConnected : styles.statusDisconnected}>
+            {isConnected ? 'Linked' : 'Not Linked'}
+          </Text>
         </Text>
       </View>
 
@@ -163,6 +228,105 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
     lineHeight: 16,
+  },
+  manualDialerContainer: {
+    width: '100%',
+    marginTop: 15,
+    alignItems: 'center',
+  },
+  manualDialerTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#e2e8f0',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  manualInputGroup: {
+    width: '100%',
+    gap: 8,
+    marginBottom: 12,
+  },
+  manualInput: {
+    width: '100%',
+    backgroundColor: '#0f172a',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#334155',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 12,
+    color: '#ffffff',
+  },
+  manualButton: {
+    backgroundColor: '#ef4444',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 6,
+    width: '100%',
+    alignItems: 'center',
+  },
+  manualButtonText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+  settingsCard: {
+    backgroundColor: '#1e293b80',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#33415550',
+    padding: 14,
+    width: '100%',
+    marginBottom: 20,
+  },
+  settingsTitle: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  settingsInput: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#334155',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 11,
+    color: '#ffffff',
+  },
+  settingsSaveBtn: {
+    backgroundColor: '#3b82f6',
+    borderRadius: 6,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+  },
+  settingsSaveText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 11,
+  },
+  settingsStatus: {
+    fontSize: 10,
+    color: '#64748b',
+  },
+  statusConnected: {
+    color: '#10b981',
+    fontWeight: 'bold',
+  },
+  statusDisconnected: {
+    color: '#ef4444',
+    fontWeight: 'bold',
   },
   statsRow: {
     flexDirection: 'row',

@@ -18,6 +18,7 @@ function log(msg) {
 async function connectDB() {
   if (!MONGODB_URI) {
     log('MONGODB_URI is not set. Using In-Memory fallback store.');
+    await seedDefaultScams();
     return false;
   }
 
@@ -25,9 +26,11 @@ async function connectDB() {
     await mongoose.connect(MONGODB_URI);
     isConnected = true;
     log('MongoDB connected successfully.');
+    await seedDefaultScams();
     return true;
   } catch (err) {
     log(`Failed to connect to MongoDB: ${err.message}. Falling back to In-Memory store.`);
+    await seedDefaultScams();
     return false;
   }
 }
@@ -120,6 +123,75 @@ if (MONGODB_URI) {
 } else {
   Report = new MemoryModel('reports');
   CommunityReport = new MemoryModel('communityReports');
+}
+
+// Seed function to pre-populate demo scams
+async function seedDefaultScams() {
+  const demoScams = [
+    {
+      scamValue: '+91 11-2436-1200',
+      type: 'phone',
+      scamCategory: 'Digital Arrest',
+      description: 'Impersonates CBI Cyber Cell inspectors. Accuses victims of drug trafficking and demands WhatsApp video arrest.',
+      reporterName: 'Cyber Crime Bureau'
+    },
+    {
+      scamValue: '+91 90000 01930',
+      type: 'phone',
+      scamCategory: 'Digital Arrest',
+      description: 'Used in simulated digital arrest calls demanding immediate fund transfer to fake government verification accounts.',
+      reporterName: 'SafeCall Shield'
+    },
+    {
+      scamValue: 'safepay@upi',
+      type: 'upi',
+      scamCategory: 'Refund Scam',
+      description: 'Fraudulent UPI ID associated with fake HDFC customer support scams claiming to process cashbacks.',
+      reporterName: 'Community Alert'
+    },
+    {
+      scamValue: 'hdfc-security-verification.net',
+      type: 'website',
+      scamCategory: 'Bank Fraud',
+      description: 'Phishing domain mimicking bank verification forms to steal customer credentials and login OTPs.',
+      reporterName: 'Threat Intel'
+    }
+  ];
+
+  if (isConnected) {
+    try {
+      const count = await CommunityReport.countDocuments();
+      if (count === 0) {
+        await CommunityReport.insertMany(demoScams);
+        log(`Seeded ${demoScams.length} demo scam records into MongoDB.`);
+      }
+    } catch (err) {
+      log(`Error seeding MongoDB: ${err.message}`);
+    }
+  } else {
+    // Seed in-memory store if empty
+    if (memoryStore.communityReports.length === 0) {
+      for (const scam of demoScams) {
+        await CommunityReport.create(scam);
+      }
+      log(`Seeded ${demoScams.length} demo scam records into In-Memory store.`);
+    }
+  }
+
+  // Pre-populate Redis cache or local cache
+  const cache = require('./redis');
+  for (const scam of demoScams) {
+    try {
+      await cache.set(`sf:check:${scam.scamValue.toLowerCase()}`, {
+        isScam: true,
+        category: scam.scamCategory,
+        createdAt: new Date(),
+        totalReports: 1
+      }, 86400 * 7); // 7 days cache for demo
+    } catch (err) {
+      log(`Cache seed failed for ${scam.scamValue}: ${err.message}`);
+    }
+  }
 }
 
 module.exports = {

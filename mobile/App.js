@@ -9,16 +9,14 @@ import LiveScannerScreen from './screens/LiveScannerScreen';
 import EvidenceScreen from './screens/EvidenceScreen';
 import CommunityScreen from './screens/CommunityScreen';
 
-// Set backend URL (supports local dev out-of-the-box)
-const BACKEND_URL = 'http://localhost:5000';
-
 export default function App() {
+  const [backendUrl, setBackendUrl] = useState('http://localhost:5000');
   const [activeTab, setActiveTab] = useState('dashboard');
   const isCallActive = useScamStore((state) => state.isCallActive);
   const threatScore = useScamStore((state) => state.threatScore);
 
   // Initialize WebSockets
-  const { isConnected, startCall, sendTranscriptChunk, endCall } = useSocket(BACKEND_URL);
+  const { isConnected, startCall, sendTranscriptChunk, endCall } = useSocket(backendUrl);
 
   const socketActions = { startCall, sendTranscriptChunk, endCall };
 
@@ -52,22 +50,25 @@ export default function App() {
           <DashboardScreen 
             socketActions={socketActions} 
             navigation={handleNavigate} 
-            BACKEND_URL={BACKEND_URL} 
+            BACKEND_URL={backendUrl} 
+            setBackendUrl={setBackendUrl}
+            isConnected={isConnected}
           />
         )}
         {activeTab === 'scanner' && (
           <LiveScannerScreen 
+            socketActions={socketActions}
             navigation={handleNavigate} 
           />
         )}
         {activeTab === 'evidence' && (
           <EvidenceScreen 
-            BACKEND_URL={BACKEND_URL} 
+            BACKEND_URL={backendUrl} 
           />
         )}
         {activeTab === 'community' && (
           <CommunityScreen 
-            BACKEND_URL={BACKEND_URL} 
+            BACKEND_URL={backendUrl} 
           />
         )}
       </View>

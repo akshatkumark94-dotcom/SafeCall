@@ -1,9 +1,9 @@
-import React, { useRef, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useRef, useEffect, useState } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { useScamStore } from '../store/useScamStore';
 import ThreatMeter from '../components/ThreatMeter';
 
-export default function LiveScannerScreen({ navigation }) {
+export default function LiveScannerScreen({ navigation, socketActions }) {
   const isCallActive = useScamStore((state) => state.isCallActive);
   const callerName = useScamStore((state) => state.callerName);
   const callerNumber = useScamStore((state) => state.callerNumber);
@@ -11,7 +11,9 @@ export default function LiveScannerScreen({ navigation }) {
   const scamCategory = useScamStore((state) => state.scamCategory);
   const advice = useScamStore((state) => state.advice);
   const transcript = useScamStore((state) => state.transcript);
+  const addLocalLine = useScamStore((state) => state.addLocalTranscriptLine);
 
+  const [inputText, setInputText] = useState('');
   const scrollRef = useRef(null);
 
   // Auto scroll transcript to the bottom on update
@@ -20,6 +22,25 @@ export default function LiveScannerScreen({ navigation }) {
       scrollRef.current.scrollToEnd({ animated: true });
     }
   }, [transcript]);
+
+  const handleSendPhrase = (text) => {
+    addLocalLine('Caller', text);
+    if (socketActions && socketActions.sendTranscriptChunk) {
+      socketActions.sendTranscriptChunk('Caller', text);
+    }
+  };
+
+  const handleSendCustomText = () => {
+    if (!inputText.trim()) return;
+    handleSendPhrase(inputText.trim());
+    setInputText('');
+  };
+
+  const handleHangUp = () => {
+    if (socketActions && socketActions.endCall) {
+      socketActions.endCall();
+    }
+  };
 
   if (!isCallActive) {
     return (
@@ -115,6 +136,59 @@ export default function LiveScannerScreen({ navigation }) {
             </View>
           ))}
         </ScrollView>
+
+        {/* Live Simulator Controls inside Scanner */}
+        <View style={styles.liveControls}>
+          <Text style={styles.liveControlsTitle}>🧪 Live Simulation Controls</Text>
+          
+          {/* Quick-tap Phrases */}
+          <View style={styles.quickPhrasesRow}>
+            <TouchableOpacity 
+              style={styles.quickPhraseBtn} 
+              onPress={() => handleSendPhrase('This is CBI Cyber Crime HQ calling. An international drug trafficking case is registered under your Aadhaar card.')}
+            >
+              <Text style={styles.quickPhraseText}>🚨 CBI Threat</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.quickPhraseBtn} 
+              onPress={() => handleSendPhrase('To verify your innocence, transfer all your account funds to the secure government verification treasury account immediately.')}
+            >
+              <Text style={styles.quickPhraseText}>💰 Send Money</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.quickPhraseBtn} 
+              onPress={() => handleSendPhrase('You are under Digital Arrest. Do not tell anyone or hang up the call, keep your room locked.')}
+            >
+              <Text style={styles.quickPhraseText}>🔒 Secrecy</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.quickPhraseBtn} 
+              onPress={() => handleSendPhrase('I have a package delivery from Amazon. Please verify the OTP or MyGate entry request.')}
+            >
+              <Text style={styles.quickPhraseText}>📦 Safe Agent</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Text Input Row */}
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.textInput}
+              value={inputText}
+              onChangeText={setInputText}
+              placeholder="Or type custom caller phrase here..."
+              placeholderTextColor="#64748b"
+              onSubmitEditing={handleSendCustomText}
+            />
+            <TouchableOpacity style={styles.sendBtn} onPress={handleSendCustomText}>
+              <Text style={styles.sendBtnText}>Send</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Hang Up Action */}
+          <TouchableOpacity style={styles.hangUpBtn} onPress={handleHangUp}>
+            <Text style={styles.hangUpText}>⏹ HANG UP & COMPILE EVIDENCE REPORT</Text>
+          </TouchableOpacity>
+        </View>
 
       </View>
     </View>
@@ -322,5 +396,79 @@ const styles = StyleSheet.create({
   suspiciousText: {
     color: '#fca5a5',
     fontWeight: '500',
+  },
+  liveControls: {
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+    padding: 12,
+    marginTop: 12,
+  },
+  liveControlsTitle: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  quickPhrasesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  quickPhraseBtn: {
+    backgroundColor: '#0f172a',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#334155',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  quickPhraseText: {
+    color: '#e2e8f0',
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 10,
+  },
+  textInput: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#334155',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 11,
+    color: '#ffffff',
+  },
+  sendBtn: {
+    backgroundColor: '#10b981',
+    borderRadius: 6,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+  },
+  sendBtnText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  hangUpBtn: {
+    backgroundColor: '#dc2626',
+    borderRadius: 6,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  hangUpText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
 });
