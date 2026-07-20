@@ -1,0 +1,10 @@
+{
+  "name": "safecall-root",
+  "version": "1.0.0",
+  "description": "Root orchestrator for SafeCall backend and frontend",
+  "scripts": {
+    "dev": "node start-dev.js",
+    "backend": "npm --prefix backend run dev",
+    "mobile": "npm --prefix mobile run web"
+  }
+}
