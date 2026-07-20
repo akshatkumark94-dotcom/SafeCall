@@ -1,10 +1,6 @@
 # 🛡️ SafeCall — Real-Time AI Cybersecurity Shield
 
 <p align="center">
-  <img src="assets/hero_banner.png" alt="SafeCall Hero Banner" width="100%" />
-</p>
-
-<p align="center">
   <b>Stopping Digital Arrest & Cyber Scams at the "Golden Minute" — Before Financial Loss Occurs.</b>
 </p>
 
