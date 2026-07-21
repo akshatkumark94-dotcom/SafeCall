@@ -10,7 +10,7 @@ import EvidenceScreen from './screens/EvidenceScreen';
 import CommunityScreen from './screens/CommunityScreen';
 
 export default function App() {
-  const [backendUrl, setBackendUrl] = useState('http://localhost:5000');
+  const [backendUrl, setBackendUrl] = useState('http://10.80.43.111:5000');
   const [activeTab, setActiveTab] = useState('dashboard');
   const isCallActive = useScamStore((state) => state.isCallActive);
   const threatScore = useScamStore((state) => state.threatScore);
