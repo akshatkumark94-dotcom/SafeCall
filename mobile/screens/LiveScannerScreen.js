@@ -14,6 +14,7 @@ export default function LiveScannerScreen({ navigation, socketActions, BACKEND_U
   const advice = useScamStore((state) => state.advice);
   const transcript = useScamStore((state) => state.transcript);
   const addLocalLine = useScamStore((state) => state.addLocalTranscriptLine);
+  const sessionId = useScamStore((state) => state.sessionId);
 
   const [inputText, setInputText] = useState('');
   const [recording, setRecording] = useState(null);
@@ -21,6 +22,7 @@ export default function LiveScannerScreen({ navigation, socketActions, BACKEND_U
   const [recordingStatus, setRecordingStatus] = useState('Idle');
   
   const scrollRef = useRef(null);
+  const chunkTimeoutRef = useRef(null);
 
   // Auto scroll transcript to the bottom on update
   useEffect(() => {
@@ -28,6 +30,22 @@ export default function LiveScannerScreen({ navigation, socketActions, BACKEND_U
       scrollRef.current.scrollToEnd({ animated: true });
     }
   }, [transcript]);
+
+  // Clean up recording timers on unmount
+  useEffect(() => {
+    return () => {
+      if (chunkTimeoutRef.current) {
+        clearTimeout(chunkTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Monitor call status to end recording automatically
+  useEffect(() => {
+    if (!isCallActive && isRecording) {
+      stopAndAnalyzeRecording();
+    }
+  }, [isCallActive]);
 
   const startRecording = async () => {
     try {
@@ -43,43 +61,68 @@ export default function LiveScannerScreen({ navigation, socketActions, BACKEND_U
         playsInSilentModeIOS: true,
       });
 
-      console.log('[LiveScanner] Starting recording..');
+      console.log('[LiveScanner] Starting initial audio chunk...');
       const { recording: newRecording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
+      
       setRecording(newRecording);
       setIsRecording(true);
-      setRecordingStatus('Recording Audio...');
-      console.log('[LiveScanner] Recording started.');
+      setRecordingStatus('Monitoring Call Audio...');
+      console.log('[LiveScanner] Initial recording started.');
+
+      // Start the recursive chunk loop
+      startChunkTimer(newRecording);
     } catch (err) {
       console.error('[LiveScanner] Failed to start recording', err);
       alert('Error starting recording: ' + err.message);
     }
   };
 
-  const stopAndAnalyzeRecording = async () => {
-    if (!recording) return;
+  const startChunkTimer = (currentRecording) => {
+    if (chunkTimeoutRef.current) {
+      clearTimeout(chunkTimeoutRef.current);
+    }
 
+    chunkTimeoutRef.current = setTimeout(async () => {
+      // Check if session has been closed in store
+      const activeState = useScamStore.getState().isCallActive;
+      if (!activeState) {
+        return;
+      }
+
+      try {
+        console.log('[LiveScanner] Rolling over audio chunk...');
+        // 1. Immediately spin up a new recording chunk to minimize gaps
+        const { recording: nextRecording } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
+        setRecording(nextRecording);
+
+        // 2. Stop and extract audio from the completed chunk
+        await currentRecording.stopAndUnloadAsync();
+        const uri = currentRecording.getURI();
+        console.log('[LiveScanner] Chunk completed. Temp file:', uri);
+
+        // Process completed chunk in background
+        processAudioChunk(uri);
+
+        // 3. Chain next rollover
+        startChunkTimer(nextRecording);
+      } catch (err) {
+        console.error('[LiveScanner] Error during audio rollover:', err);
+      }
+    }, 8000); // 8-second chunks for near real-time feedback
+  };
+
+  const processAudioChunk = async (uri) => {
     try {
-      setRecordingStatus('Analyzing audio via SafeCall AI...');
-      console.log('[LiveScanner] Stopping recording..');
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      console.log('[LiveScanner] Audio file saved at:', uri);
-
-      // Read file as base64
-      console.log('[LiveScanner] Reading file as base64...');
+      console.log('[LiveScanner] Converting chunk to base64...');
       const base64Audio = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Reset recording state
-      setRecording(null);
-      setIsRecording(false);
-
-      console.log('[LiveScanner] Sending audio to backend for analysis:', `${BACKEND_URL}/api/reports/analyze-audio`);
-
-      // Call backend REST endpoint
+      console.log('[LiveScanner] Uploading chunk for sessionId:', sessionId);
       const response = await fetch(`${BACKEND_URL}/api/reports/analyze-audio`, {
         method: 'POST',
         headers: {
@@ -87,14 +130,15 @@ export default function LiveScannerScreen({ navigation, socketActions, BACKEND_U
         },
         body: JSON.stringify({
           audioBase64: base64Audio,
-          mimeType: 'audio/mp4', // Expo records in AAC / MP4 format
+          mimeType: 'audio/mp4',
           callerNumber: callerNumber,
           callerName: callerName,
+          sessionId: sessionId
         }),
       });
 
       const result = await response.json();
-      console.log('[LiveScanner] Audio analysis response:', result);
+      console.log('[LiveScanner] Chunk analysis response:', result);
 
       if (result.success) {
         // Update Zustand store
@@ -107,21 +151,57 @@ export default function LiveScannerScreen({ navigation, socketActions, BACKEND_U
           transcript: result.report.transcript,
         });
         
-        // Trigger refetch of reports
+        // Trigger background fetch of reports
         const fetchReports = useScamStore.getState().fetchReports;
         fetchReports(BACKEND_URL);
-
-        alert('Call audio analysis completed! Evidence package generated and saved.');
-      } else {
-        alert('Analysis failed: ' + (result.error || result.message || 'Unknown error'));
       }
-      setRecordingStatus('Idle');
     } catch (err) {
-      console.error('[LiveScanner] Failed to analyze recording', err);
-      alert('Error analyzing call recording: ' + err.message);
+      console.error('[LiveScanner] Error processing chunk:', err.message);
+    }
+  };
+
+  const stopAndAnalyzeRecording = async () => {
+    if (chunkTimeoutRef.current) {
+      clearTimeout(chunkTimeoutRef.current);
+      chunkTimeoutRef.current = null;
+    }
+
+    if (!recording) {
+      setIsRecording(false);
       setRecordingStatus('Idle');
+      if (socketActions && socketActions.endCall) {
+        socketActions.endCall();
+      }
+      return;
+    }
+
+    try {
+      setRecordingStatus('Finalizing analysis...');
+      console.log('[LiveScanner] Stopping final audio chunk...');
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      
+      setRecording(null);
+      setIsRecording(false);
+
+      // Process the final chunk
+      await processAudioChunk(uri);
+      
+      setRecordingStatus('Idle');
+      
+      if (socketActions && socketActions.endCall) {
+        socketActions.endCall();
+      }
+
+      alert('Call session complete! Final evidence dossier generated.');
+    } catch (err) {
+      console.error('[LiveScanner] Failed to stop/analyze recording', err);
       setIsRecording(false);
       setRecording(null);
+      setRecordingStatus('Idle');
+      if (socketActions && socketActions.endCall) {
+        socketActions.endCall();
+      }
     }
   };
 
@@ -209,6 +289,13 @@ export default function LiveScannerScreen({ navigation, socketActions, BACKEND_U
             <Text style={styles.recordBtnText}>⏹ STOP & ANALYZE</Text>
           </TouchableOpacity>
         )}
+      </View>
+
+      {/* Speakerphone Warning Banner */}
+      <View style={styles.speakerphoneWarningBanner}>
+        <Text style={styles.speakerphoneWarningText}>
+          ⚠️ <Text style={styles.boldText}>IMPORTANT:</Text> You must turn on <Text style={styles.warningHighlight}>Speakerphone</Text> during the call so SafeCall can capture both sides of the conversation.
+        </Text>
       </View>
 
       {/* Main content grid */}
@@ -647,5 +734,27 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
     letterSpacing: 0.5,
+  },
+  speakerphoneWarningBanner: {
+    backgroundColor: '#7f1d1d',
+    borderBottomWidth: 1,
+    borderBottomColor: '#b91c1c',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  speakerphoneWarningText: {
+    color: '#fca5a5',
+    fontSize: 10,
+    lineHeight: 14,
+    textAlign: 'center',
+  },
+  boldText: {
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  warningHighlight: {
+    fontWeight: 'bold',
+    color: '#fecdd3',
+    textDecorationLine: 'underline',
   },
 });

@@ -8,7 +8,8 @@ const DEFAULT_CALL_STATE = {
   scamCategory: 'None',
   scamIndicators: [],
   advice: [],
-  transcript: []
+  transcript: [],
+  sessionId: ''
 };
 
 export const useScamStore = create((set, get) => ({
@@ -32,7 +33,8 @@ export const useScamStore = create((set, get) => ({
       ...DEFAULT_CALL_STATE,
       isCallActive: true,
       callerNumber: callerNumber || 'Unknown',
-      callerName: callerName || 'Unknown Caller'
+      callerName: callerName || 'Unknown Caller',
+      sessionId: 'sess_' + Math.random().toString(36).substring(2, 11)
     });
   },
 

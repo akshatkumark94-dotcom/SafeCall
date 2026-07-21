@@ -22,11 +22,18 @@ Under psychological panic, they isolate you, forbid you from speaking to family,
 ### 🛡️ The Defense: SafeCall
 
 **SafeCall** intervenes during this exact window of vulnerability. With a single tap:
-1. **Silent Capture**: It securely monitors the call audio.
+1. **Speakerphone Capture**: Once activated and with speakerphone enabled, SafeCall captures call audio from the physical microphone in the background.
 2. **Real-Time Transcription**: Converts speech to text chunk-by-chunk.
 3. **Contextual AI Analysis**: Feeds the transcript continuously to a localized, scam-trained AI model (Google Gemini 2.5 Flash).
 4. **Instant Stealth Alerts**: Vibe alerts, flashing screens, and clear warnings guide the victim to hang up, without alerting the caller.
 5. **Dossier Compiling**: Automatically packages the entire session, flagged sentences, caller numbers, and bank details into a structured PDF report to submit to the authorities.
+
+> [!IMPORTANT]
+> **Device & Platform Constraints (Speakerphone Requirement)**
+> Modern mobile operating systems (iOS and Android) block third-party applications from directly intercepting digital phone call audio streams due to sandbox privacy constraints.
+> To work around this constraint in the MVP demo:
+> * **Speakerphone is Required**: The user must enable **Speakerphone** during the call. This routes the caller's voice through the device speaker, allowing SafeCall's active microphone shield (`expo-av`) to capture both sides of the conversation.
+> * **Near-Real-Time Chunking**: The mobile app records audio in continuous 8-second segments, uploads them to the server, and processes them incrementally using Gemini to stream updates to the threat assessment screen.
 
 ---
 

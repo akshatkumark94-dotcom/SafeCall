@@ -78,15 +78,15 @@ router.get('/:id/pdf', async (req, res) => {
 // POST /api/reports/analyze-audio
 router.post('/analyze-audio', async (req, res) => {
   try {
-    const { audioBase64, mimeType, callerNumber, callerName } = req.body;
+    const { audioBase64, mimeType, callerNumber, callerName, sessionId } = req.body;
     
     if (!audioBase64) {
       return res.status(400).json({ success: false, message: 'audioBase64 is required.' });
     }
 
-    console.log(`[Reports Route] Starting audio analysis for caller: ${callerName} (${callerNumber})`);
+    console.log(`[Reports Route] Starting audio chunk analysis for caller: ${callerName} (${callerNumber}), sessionId: ${sessionId}`);
     
-    // Call Gemini to transcribe and analyze the audio
+    // Call Gemini to transcribe and analyze the audio chunk
     const analysis = await analyzeAudio(audioBase64, mimeType || 'audio/mp4');
 
     // Run flagged phrases highlighting
@@ -100,24 +100,60 @@ router.post('/analyze-audio', async (req, res) => {
       }
     });
 
-    // Save to Database
-    const newReport = await Report.create({
-      callerNumber: callerNumber || 'Unknown',
-      callerName: callerName || 'Unknown Caller',
-      threatScore: analysis.threatScore,
-      scamCategory: analysis.scamCategory,
-      scamIndicators: analysis.indicators,
-      transcript: analysis.transcript,
-      advice: analysis.contextualAdvice,
-      createdAt: new Date()
-    });
+    let report = null;
+    if (sessionId) {
+      report = await Report.findOne({ sessionId });
+    }
 
-    console.log(`[Reports Route] Audio report saved successfully: ${newReport._id}`);
+    if (report) {
+      // Append transcript lines
+      const existingTranscript = report.transcript || [];
+      const newTranscriptLines = analysis.transcript.map(line => ({
+        speaker: line.speaker || 'Caller',
+        text: line.text || '',
+        timestamp: new Date(),
+        isSuspicious: line.isSuspicious || false
+      }));
+      report.transcript = [...existingTranscript, ...newTranscriptLines];
+
+      // Update threat score (use the maximum/latest)
+      report.threatScore = Math.max(report.threatScore, analysis.threatScore);
+
+      // Merge scam categories / indicators / advice
+      if (analysis.scamCategory && analysis.scamCategory !== 'None' && analysis.scamCategory !== 'Unclassified') {
+        report.scamCategory = analysis.scamCategory;
+      }
+      if (analysis.indicators && analysis.indicators.length > 0) {
+        const mergedIndicators = new Set([...(report.scamIndicators || []), ...analysis.indicators]);
+        report.scamIndicators = Array.from(mergedIndicators);
+      }
+      if (analysis.contextualAdvice && analysis.contextualAdvice.length > 0) {
+        const mergedAdvice = new Set([...(report.advice || []), ...analysis.contextualAdvice]);
+        report.advice = Array.from(mergedAdvice);
+      }
+
+      await report.save();
+      console.log(`[Reports Route] Audio report updated successfully: ${report._id}`);
+    } else {
+      // Create new Report
+      report = await Report.create({
+        sessionId: sessionId || '',
+        callerNumber: callerNumber || 'Unknown',
+        callerName: callerName || 'Unknown Caller',
+        threatScore: analysis.threatScore,
+        scamCategory: analysis.scamCategory,
+        scamIndicators: analysis.indicators,
+        transcript: analysis.transcript,
+        advice: analysis.contextualAdvice,
+        createdAt: new Date()
+      });
+      console.log(`[Reports Route] Audio report created successfully: ${report._id}`);
+    }
 
     res.json({ 
       success: true, 
-      reportId: newReport._id, 
-      report: newReport 
+      reportId: report._id, 
+      report: report 
     });
 
   } catch (error) {

@@ -73,6 +73,18 @@ class MemoryModel {
     return memoryStore[this.storeName].find(item => item._id === id) || null;
   }
 
+  async findOne(query = {}) {
+    const list = await this.find(query);
+    const item = list[0] || null;
+    if (item && !item.save) {
+      item.save = async function() {
+        item.updatedAt = new Date();
+        return item;
+      };
+    }
+    return item;
+  }
+
   async create(data) {
     const newItem = {
       _id: Math.random().toString(36).substring(2, 15),
@@ -89,6 +101,7 @@ class MemoryModel {
 // Mongoose Schema Definitions (for Production)
 // ==========================================
 const ReportSchema = new mongoose.Schema({
+  sessionId: { type: String, default: '' },
   callerNumber: { type: String, default: 'Unknown' },
   callerName: { type: String, default: 'Unknown Caller' },
   threatScore: { type: Number, default: 0 },
