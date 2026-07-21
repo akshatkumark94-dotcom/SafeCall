@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { useScamStore } from '../store/useScamStore';
 import CallSimulator from '../components/CallSimulator';
 
@@ -14,6 +16,7 @@ export default function DashboardScreen({ socketActions, navigation, BACKEND_URL
   const [manualNumber, setManualNumber] = useState('+91 90000 01930');
   const [manualName, setManualName] = useState('Suspected Officer');
   const [tempUrl, setTempUrl] = useState(BACKEND_URL);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     fetchReports(BACKEND_URL);
@@ -26,6 +29,69 @@ export default function DashboardScreen({ socketActions, navigation, BACKEND_URL
     startCall(num, name);
     socketActions.startCall(num, name);
     navigation('scanner');
+  };
+
+  const handlePickAndUploadAudio = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: 'audio/*',
+        copyToCacheDirectory: true
+      });
+
+      console.log('[DocumentPicker] Selected document:', res);
+
+      if (res.canceled || !res.assets || res.assets.length === 0) {
+        console.log('[DocumentPicker] Cancelled picking');
+        return;
+      }
+
+      const file = res.assets[0];
+      const uri = file.uri;
+      setIsUploading(true);
+
+      console.log('[DocumentPicker] Reading file as base64...');
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64
+      });
+
+      const sessId = 'sess_uploaded_' + Math.random().toString(36).substring(2, 11);
+
+      console.log('[DocumentPicker] Sending audio for threat assessment...');
+      const response = await fetch(`${BACKEND_URL}/api/reports/analyze-audio`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          audioBase64: base64,
+          mimeType: file.mimeType || 'audio/mp4',
+          callerNumber: manualNumber || 'Unknown Number',
+          callerName: manualName || 'Uploaded Audio Call',
+          sessionId: sessId
+        })
+      });
+
+      const result = await response.json();
+      console.log('[DocumentPicker] Response:', result);
+
+      setIsUploading(false);
+
+      if (result.success) {
+        // Trigger report list reload
+        fetchReports(BACKEND_URL);
+        alert('Call recording processed successfully! Open the Evidence tab to view your PDF report.');
+        
+        // Auto-navigate to Evidence Tab
+        navigation('evidence');
+      } else {
+        alert('Analysis failed: ' + (result.error || result.message || 'Unknown error'));
+      }
+
+    } catch (err) {
+      console.error('[DocumentPicker] Error during pick & upload:', err);
+      alert('Error uploading call recording: ' + err.message);
+      setIsUploading(false);
+    }
   };
 
   const totalPrevented = reports.filter(r => r.threatScore > 40).length;
@@ -79,6 +145,26 @@ export default function DashboardScreen({ socketActions, navigation, BACKEND_URL
           </View>
         )}
       </View>
+
+      {/* Upload Call Recording Card */}
+      {!isCallActive && (
+        <View style={styles.uploadCard}>
+          <Text style={styles.uploadTitle}>📤 Upload Call Recording</Text>
+          <Text style={styles.uploadDesc}>
+            Suspect a call you already recorded? Select the audio file to analyze it for threat patterns and generate a digital dossier.
+          </Text>
+          
+          {isUploading ? (
+            <View style={styles.uploadLoadingRow}>
+              <Text style={styles.uploadLoadingText}>⏳ Analyzing audio via SafeCall AI...</Text>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.uploadBtn} onPress={handlePickAndUploadAudio}>
+              <Text style={styles.uploadBtnText}>📁 Select Call Recording File</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {/* Connection Settings Box */}
       <View style={styles.settingsCard}>
@@ -390,5 +476,53 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#94a3b8',
     lineHeight: 16,
+  },
+  uploadCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+    padding: 18,
+    width: '100%',
+    marginBottom: 20,
+  },
+  uploadTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 6,
+  },
+  uploadDesc: {
+    fontSize: 11,
+    color: '#94a3b8',
+    lineHeight: 16,
+    marginBottom: 14,
+  },
+  uploadLoadingRow: {
+    backgroundColor: '#1e293b',
+    borderColor: '#3b82f6',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadLoadingText: {
+    color: '#60a5fa',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  uploadBtn: {
+    backgroundColor: '#3b82f6',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
 });
