@@ -138,7 +138,7 @@ async function analyzeTranscript(transcriptLines) {
 
   try {
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       generationConfig: {
         responseMimeType: "application/json"
       }
@@ -215,7 +215,7 @@ async function analyzeAudio(audioBase64, mimeType = 'audio/mp4') {
 
   try {
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       generationConfig: {
         responseMimeType: "application/json"
       }
