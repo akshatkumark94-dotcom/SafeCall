@@ -93,16 +93,23 @@ export default function LiveScannerScreen({ navigation, socketActions, BACKEND_U
 
       try {
         console.log('[LiveScanner] Rolling over audio chunk...');
-        // 1. Immediately spin up a new recording chunk to minimize gaps
+        // 1. First, stop and unload the current recording so that the audio hardware is freed
+        await currentRecording.stopAndUnloadAsync();
+        const uri = currentRecording.getURI();
+        console.log('[LiveScanner] Chunk completed. Temp file:', uri);
+
+        // Check if the call was closed while we were unloading
+        const stillActive = useScamStore.getState().isCallActive;
+        if (!stillActive) {
+          processAudioChunk(uri);
+          return;
+        }
+
+        // 2. Immediately spin up the next recording chunk to minimize capture gaps
         const { recording: nextRecording } = await Audio.Recording.createAsync(
           Audio.RecordingOptionsPresets.HIGH_QUALITY
         );
         setRecording(nextRecording);
-
-        // 2. Stop and extract audio from the completed chunk
-        await currentRecording.stopAndUnloadAsync();
-        const uri = currentRecording.getURI();
-        console.log('[LiveScanner] Chunk completed. Temp file:', uri);
 
         // Process completed chunk in background
         processAudioChunk(uri);
