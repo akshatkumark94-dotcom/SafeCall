@@ -16,7 +16,7 @@ const backend = spawn('npm', ['run', 'dev'], {
 });
 
 // Spawn Frontend
-const frontend = spawn('npx', ['expo', 'start', '--web'], { 
+const frontend = spawn('npx', ['expo', 'start'], { 
   cwd: path.join(__dirname, 'mobile'),
   shell: true 
 });
