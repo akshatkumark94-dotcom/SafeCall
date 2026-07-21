@@ -1,9 +1,11 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
 import { useScamStore } from '../store/useScamStore';
 import ThreatMeter from '../components/ThreatMeter';
 
-export default function LiveScannerScreen({ navigation, socketActions }) {
+export default function LiveScannerScreen({ navigation, socketActions, BACKEND_URL }) {
   const isCallActive = useScamStore((state) => state.isCallActive);
   const callerName = useScamStore((state) => state.callerName);
   const callerNumber = useScamStore((state) => state.callerNumber);
@@ -14,6 +16,10 @@ export default function LiveScannerScreen({ navigation, socketActions }) {
   const addLocalLine = useScamStore((state) => state.addLocalTranscriptLine);
 
   const [inputText, setInputText] = useState('');
+  const [recording, setRecording] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingStatus, setRecordingStatus] = useState('Idle');
+  
   const scrollRef = useRef(null);
 
   // Auto scroll transcript to the bottom on update
@@ -22,6 +28,102 @@ export default function LiveScannerScreen({ navigation, socketActions }) {
       scrollRef.current.scrollToEnd({ animated: true });
     }
   }, [transcript]);
+
+  const startRecording = async () => {
+    try {
+      console.log('[LiveScanner] Requesting mic permissions..');
+      const permission = await Audio.requestPermissionsAsync();
+      if (permission.status !== 'granted') {
+        alert('Microphone permission is required to record and analyze calls.');
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      console.log('[LiveScanner] Starting recording..');
+      const { recording: newRecording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      setRecording(newRecording);
+      setIsRecording(true);
+      setRecordingStatus('Recording Audio...');
+      console.log('[LiveScanner] Recording started.');
+    } catch (err) {
+      console.error('[LiveScanner] Failed to start recording', err);
+      alert('Error starting recording: ' + err.message);
+    }
+  };
+
+  const stopAndAnalyzeRecording = async () => {
+    if (!recording) return;
+
+    try {
+      setRecordingStatus('Analyzing audio via SafeCall AI...');
+      console.log('[LiveScanner] Stopping recording..');
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      console.log('[LiveScanner] Audio file saved at:', uri);
+
+      // Read file as base64
+      console.log('[LiveScanner] Reading file as base64...');
+      const base64Audio = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Reset recording state
+      setRecording(null);
+      setIsRecording(false);
+
+      console.log('[LiveScanner] Sending audio to backend for analysis:', `${BACKEND_URL}/api/reports/analyze-audio`);
+
+      // Call backend REST endpoint
+      const response = await fetch(`${BACKEND_URL}/api/reports/analyze-audio`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioBase64: base64Audio,
+          mimeType: 'audio/mp4', // Expo records in AAC / MP4 format
+          callerNumber: callerNumber,
+          callerName: callerName,
+        }),
+      });
+
+      const result = await response.json();
+      console.log('[LiveScanner] Audio analysis response:', result);
+
+      if (result.success) {
+        // Update Zustand store
+        const updateAnalysis = useScamStore.getState().updateAnalysis;
+        updateAnalysis({
+          threatScore: result.report.threatScore,
+          scamCategory: result.report.scamCategory,
+          scamIndicators: result.report.scamIndicators,
+          advice: result.report.advice,
+          transcript: result.report.transcript,
+        });
+        
+        // Trigger refetch of reports
+        const fetchReports = useScamStore.getState().fetchReports;
+        fetchReports(BACKEND_URL);
+
+        alert('Call audio analysis completed! Evidence package generated and saved.');
+      } else {
+        alert('Analysis failed: ' + (result.error || result.message || 'Unknown error'));
+      }
+      setRecordingStatus('Idle');
+    } catch (err) {
+      console.error('[LiveScanner] Failed to analyze recording', err);
+      alert('Error analyzing call recording: ' + err.message);
+      setRecordingStatus('Idle');
+      setIsRecording(false);
+      setRecording(null);
+    }
+  };
 
   const handleSendPhrase = (text) => {
     addLocalLine('Caller', text);
@@ -37,8 +139,12 @@ export default function LiveScannerScreen({ navigation, socketActions }) {
   };
 
   const handleHangUp = () => {
-    if (socketActions && socketActions.endCall) {
-      socketActions.endCall();
+    if (isRecording) {
+      stopAndAnalyzeRecording();
+    } else {
+      if (socketActions && socketActions.endCall) {
+        socketActions.endCall();
+      }
     }
   };
 
@@ -79,6 +185,30 @@ export default function LiveScannerScreen({ navigation, socketActions }) {
           <View style={styles.scanningDot} />
           <Text style={styles.scanningText}>SCANNING</Text>
         </View>
+      </View>
+
+      {/* Audio Recording Control Bar */}
+      <View style={styles.recordingBanner}>
+        <View style={styles.recordingTextCol}>
+          <Text style={styles.recordingStatusLabel}>🎙️ MICROPHONE SHIELD</Text>
+          <Text style={styles.recordingStatusText}>
+            {recordingStatus !== 'Idle' ? recordingStatus : (isRecording ? 'RECORDING ACTIVE' : 'RECORDING IDLE')}
+          </Text>
+        </View>
+        
+        {!isRecording ? (
+          <TouchableOpacity 
+            style={[styles.recordBtn, styles.recordStartBtn, recordingStatus !== 'Idle' && styles.disabledRecordBtn]} 
+            onPress={startRecording}
+            disabled={recordingStatus !== 'Idle'}
+          >
+            <Text style={styles.recordBtnText}>🎙️ RECORD</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={[styles.recordBtn, styles.recordStopBtn]} onPress={stopAndAnalyzeRecording}>
+            <Text style={styles.recordBtnText}>⏹ STOP & ANALYZE</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Main content grid */}
@@ -466,6 +596,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   hangUpText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  recordingBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#1e293b',
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  recordingTextCol: {
+    flex: 1,
+  },
+  recordingStatusLabel: {
+    fontSize: 8,
+    fontWeight: 'bold',
+    color: '#3b82f6',
+    letterSpacing: 1,
+  },
+  recordingStatusText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginTop: 2,
+  },
+  recordBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordStartBtn: {
+    backgroundColor: '#10b981',
+  },
+  recordStopBtn: {
+    backgroundColor: '#ef4444',
+  },
+  disabledRecordBtn: {
+    opacity: 0.5,
+  },
+  recordBtnText: {
     color: '#ffffff',
     fontSize: 10,
     fontWeight: 'bold',

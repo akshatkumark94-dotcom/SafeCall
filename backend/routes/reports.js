@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Report } = require('../db');
 const { generateReportPDF } = require('../services/pdfService');
+const { analyzeAudio } = require('../services/geminiService');
 
 // Save a new evidence report
 router.post('/', async (req, res) => {
@@ -71,6 +72,57 @@ router.get('/:id/pdf', async (req, res) => {
     if (!res.headersSent) {
       res.status(500).json({ success: false, error: error.message });
     }
+  }
+});
+
+// POST /api/reports/analyze-audio
+router.post('/analyze-audio', async (req, res) => {
+  try {
+    const { audioBase64, mimeType, callerNumber, callerName } = req.body;
+    
+    if (!audioBase64) {
+      return res.status(400).json({ success: false, message: 'audioBase64 is required.' });
+    }
+
+    console.log(`[Reports Route] Starting audio analysis for caller: ${callerName} (${callerNumber})`);
+    
+    // Call Gemini to transcribe and analyze the audio
+    const analysis = await analyzeAudio(audioBase64, mimeType || 'audio/mp4');
+
+    // Run flagged phrases highlighting
+    analysis.transcript.forEach(item => {
+      const isFlagged = analysis.suspiciousPhrases.some(sp => 
+        item.text.toLowerCase().includes(sp.phrase.toLowerCase()) ||
+        sp.phrase.toLowerCase().includes(item.text.toLowerCase())
+      );
+      if (isFlagged) {
+        item.isSuspicious = true;
+      }
+    });
+
+    // Save to Database
+    const newReport = await Report.create({
+      callerNumber: callerNumber || 'Unknown',
+      callerName: callerName || 'Unknown Caller',
+      threatScore: analysis.threatScore,
+      scamCategory: analysis.scamCategory,
+      scamIndicators: analysis.indicators,
+      transcript: analysis.transcript,
+      advice: analysis.contextualAdvice,
+      createdAt: new Date()
+    });
+
+    console.log(`[Reports Route] Audio report saved successfully: ${newReport._id}`);
+
+    res.json({ 
+      success: true, 
+      reportId: newReport._id, 
+      report: newReport 
+    });
+
+  } catch (error) {
+    console.error('[Reports Route] Error analyzing audio:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

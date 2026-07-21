@@ -197,5 +197,89 @@ Only return the JSON. Do not include markdown code block syntax.`;
 }
 
 module.exports = {
-  analyzeTranscript
+  analyzeTranscript,
+  analyzeAudio
 };
+
+/**
+ * Analyzes an audio file (base64) using Gemini 2.5 Flash.
+ * @param {string} audioBase64 
+ * @param {string} mimeType 
+ * @returns {Promise<{threatScore: number, scamCategory: string, indicators: string[], contextualAdvice: string[], suspiciousPhrases: Array<{phrase: string, reason: string}>, transcript: Array<{speaker: string, text: string}>}>}
+ */
+async function analyzeAudio(audioBase64, mimeType = 'audio/mp4') {
+  if (!genAI) {
+    throw new Error('Gemini API key is not configured.');
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-2.5-flash',
+      generationConfig: {
+        responseMimeType: "application/json"
+      }
+    });
+
+    const prompt = `You are a real-time cyber security system named SafeCall. 
+Your role is to listen to the provided phone call recording and analyze it to detect scams, specifically Digital Arrest scams, Lottery/Refund fraud, Bank Impersonation, and Tech Support scams.
+
+Listen to the audio, transcribe the conversation (identifying speakers if possible, e.g., "Caller" vs "Receiver"), and evaluate it based on common scam tactics:
+1. Authority Impersonation (claims to be Police, CBI, Customs, Tax, Court, Bank, FedEx support)
+2. Urgency/Pressure (must transfer money now, arrest warrant issued, immediate action needed)
+3. Demands for Secrecy (do not tell family, keep line connected, lock room door)
+4. Financial requests (verify funds, transfer money to "safe accounts", share OTP/PIN/CVV)
+
+Return a strictly formatted JSON response matching this schema:
+{
+  "transcript": [
+    {
+      "speaker": "Caller" or "Receiver",
+      "text": "transcribed speech segment"
+    }
+  ],
+  "threatScore": <number from 0 to 100 reflecting the likelihood of a scam>,
+  "scamCategory": "<detected category e.g., 'Digital Arrest', 'Bank Fraud', 'Lottery Scam', 'None'>",
+  "indicators": ["<detected indicators e.g., 'Authority Impersonation', 'Urgency', 'Secrecy Demand', 'Financial Request'>"],
+  "contextualAdvice": ["<actionable advise for the victim in 1 sentence e.g., 'Hang up immediately', 'Do not share OTP'>"],
+  "suspiciousPhrases": [
+    {
+      "phrase": "<exact sentence from the transcript that was suspicious>",
+      "reason": "<short explanation of why it is suspicious>"
+    }
+  ]
+}
+
+Only return the JSON. Do not include markdown code block syntax.`;
+
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          data: audioBase64,
+          mimeType: mimeType
+        }
+      },
+      prompt
+    ]);
+
+    const responseText = result.response.text().trim();
+    const analysis = JSON.parse(responseText);
+
+    return {
+      threatScore: Number(analysis.threatScore) || 0,
+      scamCategory: analysis.scamCategory || 'Unclassified',
+      indicators: Array.isArray(analysis.indicators) ? analysis.indicators : [],
+      contextualAdvice: Array.isArray(analysis.contextualAdvice) ? analysis.contextualAdvice : [],
+      suspiciousPhrases: Array.isArray(analysis.suspiciousPhrases) ? analysis.suspiciousPhrases : [],
+      transcript: Array.isArray(analysis.transcript) ? analysis.transcript.map(line => ({
+        speaker: line.speaker || 'Caller',
+        text: line.text || '',
+        timestamp: new Date(),
+        isSuspicious: false
+      })) : []
+    };
+
+  } catch (error) {
+    console.error('[Gemini Service] Audio analysis failed:', error.message);
+    throw error;
+  }
+}

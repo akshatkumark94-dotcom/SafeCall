@@ -59,6 +59,7 @@ export default function App() {
           <LiveScannerScreen 
             socketActions={socketActions}
             navigation={handleNavigate} 
+            BACKEND_URL={backendUrl}
           />
         )}
         {activeTab === 'evidence' && (
