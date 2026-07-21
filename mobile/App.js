@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity, StatusBar } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSocket } from './hooks/useSocket';
 import { useScamStore } from './store/useScamStore';
 
@@ -14,6 +15,33 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const isCallActive = useScamStore((state) => state.isCallActive);
   const threatScore = useScamStore((state) => state.threatScore);
+
+  // Load persisted backend URL on boot
+  useEffect(() => {
+    const loadPersistedUrl = async () => {
+      try {
+        const savedUrl = await AsyncStorage.getItem('@safecall_backend_url');
+        if (savedUrl) {
+          setBackendUrl(savedUrl);
+          console.log('[App] Loaded persisted backend URL:', savedUrl);
+        }
+      } catch (err) {
+        console.error('[App] Failed to load persisted backend URL', err);
+      }
+    };
+    loadPersistedUrl();
+  }, []);
+
+  // Update and persist backend URL
+  const handleUpdateBackendUrl = async (newUrl) => {
+    setBackendUrl(newUrl);
+    try {
+      await AsyncStorage.setItem('@safecall_backend_url', newUrl);
+      console.log('[App] Saved backend URL to storage:', newUrl);
+    } catch (err) {
+      console.error('[App] Failed to persist backend URL', err);
+    }
+  };
 
   // Initialize WebSockets
   const { isConnected, startCall, sendTranscriptChunk, endCall } = useSocket(backendUrl);
@@ -51,7 +79,7 @@ export default function App() {
             socketActions={socketActions} 
             navigation={handleNavigate} 
             BACKEND_URL={backendUrl} 
-            setBackendUrl={setBackendUrl}
+            setBackendUrl={handleUpdateBackendUrl}
             isConnected={isConnected}
           />
         )}

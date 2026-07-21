@@ -3,6 +3,11 @@ const router = express.Router();
 const { CommunityReport } = require('../db');
 const cache = require('../redis');
 
+// Utility to escape regex special characters to prevent ReDoS / injection
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Add a record to the scam database
 router.post('/', async (req, res) => {
   try {
@@ -71,9 +76,10 @@ router.get('/search', async (req, res) => {
       });
     }
 
-    // DB query (case-insensitive regular expression match)
+    // DB query (case-insensitive regular expression match with ReDoS protection)
+    const escapedQuery = escapeRegExp(queryStr);
     const matches = await CommunityReport.find({
-      scamValue: new RegExp(queryStr, 'i')
+      scamValue: new RegExp(escapedQuery, 'i')
     });
 
     if (matches.length > 0) {

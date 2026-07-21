@@ -1,6 +1,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const GEMINI_API_KEY = process.env.GEMINI_API;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 
+                       process.env.GEMINI_API;
 
 let genAI = null;
 if (GEMINI_API_KEY) {
@@ -10,7 +11,7 @@ if (GEMINI_API_KEY) {
 // Fallback rules-based analyzer when Gemini Key is absent
 function localRulesAnalyzer(transcriptLines) {
   const text = transcriptLines.map(l => l.text).join(' ').toLowerCase();
-  
+
   let threatScore = 0;
   const indicators = [];
   const advice = [];
@@ -25,7 +26,7 @@ function localRulesAnalyzer(transcriptLines) {
     indicators.push('Authority Impersonation');
     advice.push('State that you will contact the police station directly and verify.');
     advice.push('Government agencies NEVER conduct arrests or official investigations via Skype/WhatsApp video calls.');
-    
+
     // Find matching phrases
     transcriptLines.forEach(line => {
       if (/\b(cbi|police|customs|court|arrest|jail|illegal|warrant)\b/i.test(line.text)) {
@@ -60,7 +61,7 @@ function localRulesAnalyzer(transcriptLines) {
     threatScore += 15;
     indicators.push('Urgency and Pressure Tactics');
     advice.push('Take a deep breath. Scammers use artificial time limits to bypass your logical thinking.');
-    
+
     transcriptLines.forEach(line => {
       if (/\b(urgent|immediate|quickly|hang up|now|hours|disconnect)\b/i.test(line.text)) {
         suspiciousPhrases.push({
@@ -136,7 +137,7 @@ async function analyzeTranscript(transcriptLines) {
   }
 
   try {
-    const model = genAI.getGenerativeModel({ 
+    const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
       generationConfig: {
         responseMimeType: "application/json"
@@ -179,7 +180,7 @@ Only return the JSON. Do not include markdown code block syntax.`;
 
     const result = await model.generateContent(prompt);
     const responseText = result.response.text().trim();
-    
+
     // Parse response
     const analysis = JSON.parse(responseText);
     return {
@@ -213,7 +214,7 @@ async function analyzeAudio(audioBase64, mimeType = 'audio/mp4') {
   }
 
   try {
-    const model = genAI.getGenerativeModel({ 
+    const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
       generationConfig: {
         responseMimeType: "application/json"

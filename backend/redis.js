@@ -5,6 +5,7 @@ const UPSTASH_REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
 // Local Memory Cache
 const localCache = new Map();
+const localTimers = new Map();
 
 function log(msg) {
   console.log(`[SafeCall Cache] ${msg}`);
@@ -50,11 +51,18 @@ const cache = {
         log(`Redis SET error: ${err.message}. Using memory fallback.`);
       }
     }
+    // Clear any existing timer for this key
+    if (localTimers.has(key)) {
+      clearTimeout(localTimers.get(key));
+      localTimers.delete(key);
+    }
     localCache.set(key, value);
     // Basic expiry helper for memory cache
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       localCache.delete(key);
+      localTimers.delete(key);
     }, expireSeconds * 1000);
+    localTimers.set(key, timer);
     return true;
   },
 
@@ -71,6 +79,11 @@ const cache = {
       } catch (err) {
         log(`Redis DEL error: ${err.message}. Using memory fallback.`);
       }
+    }
+    // Clear any existing timer for this key
+    if (localTimers.has(key)) {
+      clearTimeout(localTimers.get(key));
+      localTimers.delete(key);
     }
     return localCache.delete(key);
   }

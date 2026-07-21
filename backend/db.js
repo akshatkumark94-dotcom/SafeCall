@@ -105,7 +105,7 @@ const ReportSchema = new mongoose.Schema({
 });
 
 const CommunityReportSchema = new mongoose.Schema({
-  scamValue: { type: String, required: true }, // Phone number, UPI, website, etc.
+  scamValue: { type: String, required: true, index: true }, // Phone number, UPI, website, etc.
   type: { type: String, required: true }, // 'phone', 'upi', 'website', 'other'
   scamCategory: { type: String, default: 'Unclassified' },
   description: { type: String },
