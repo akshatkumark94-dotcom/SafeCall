@@ -24,16 +24,16 @@ Under psychological panic, they isolate you, forbid you from speaking to family,
 **SafeCall** intervenes during this exact window of vulnerability. With a single tap:
 1. **Speakerphone Capture**: Once activated and with speakerphone enabled, SafeCall captures call audio from the physical microphone in the background.
 2. **Real-Time Transcription**: Converts speech to text chunk-by-chunk.
-3. **Contextual AI Analysis**: Feeds the transcript continuously to a localized, scam-trained AI model (Google Gemini 2.5 Flash).
+3. **Contextual AI Analysis**: Feeds the transcript continuously to a localized, scam-trained AI model (Google Gemini 3.5 Flash).
 4. **Instant Stealth Alerts**: Vibe alerts, flashing screens, and clear warnings guide the victim to hang up, without alerting the caller.
 5. **Dossier Compiling**: Automatically packages the entire session, flagged sentences, caller numbers, and bank details into a structured PDF report to submit to the authorities.
 
 > [!IMPORTANT]
-> **Device & Platform Constraints (Speakerphone Requirement)**
+> **Device & Platform Constraints & Workarounds**
 > Modern mobile operating systems (iOS and Android) block third-party applications from directly intercepting digital phone call audio streams due to sandbox privacy constraints.
-> To work around this constraint in the MVP demo:
-> * **Speakerphone is Required**: The user must enable **Speakerphone** during the call. This routes the caller's voice through the device speaker, allowing SafeCall's active microphone shield (`expo-av`) to capture both sides of the conversation.
-> * **Near-Real-Time Chunking**: The mobile app records audio in continuous 8-second segments, uploads them to the server, and processes them incrementally using Gemini to stream updates to the threat assessment screen.
+> SafeCall provides two ways to work around this constraint in the MVP:
+> * **Option A: Pre-recorded Audio File Upload (Recommended)**: The user can upload a pre-recorded call audio recording file (.mp3, .m4a, .wav) directly from their phone's file picker. The app reads and uploads the file to the backend, where Gemini performs a complete threat evaluation and generates a PDF evidence dossier instantly.
+> * **Option B: Live Speakerphone Capture**: If recording live, the user must enable **Speakerphone** during the call. This routes the caller's voice through the device speaker, allowing SafeCall's active microphone shield (`expo-av`) to capture both sides of the conversation in continuous 8-second chunk segments.
 
 ---
 
@@ -51,7 +51,7 @@ graph TD
 
     subgraph Backend Services [SafeCall Backend Server - Node.js & Express]
         SS[Socket.io Server]
-        AS[Gemini Service - gemini-2.5-flash]
+        AS[Gemini Service - gemini-3.5-flash]
         PE[PDF Engine - pdfkit]
         LR[Local Rules Fallback Analyzer]
     end
@@ -132,7 +132,7 @@ SafeCall's safety net is divided into three key technological subsystems working
 
 ### 🧠 1. Real-Time Detection Engine
 * **The WebSockets Channel**: Utilizing Socket.io, transcript text fragments are sent from the client as soon as they are captured.
-* **The AI Evaluator**: The server pipes the full conversation logs to a customized prompt running on `gemini-2.5-flash`. The model evaluates:
+* **The AI Evaluator**: The server pipes the full conversation logs to a customized prompt running on `gemini-3.5-flash`. The model evaluates:
   * **Authority Impersonation** (e.g. CBI, Police, Custom Agents, DHL).
   * **Urgency & Panic** (e.g. "Transfer funds within 20 minutes").
   * **Demands for Secrecy** (e.g. "Do not tell anyone, lock the door").
@@ -229,11 +229,26 @@ This script concurrently starts:
 1. **The Backend Server** on `http://localhost:5000`
 2. **The Expo Dev Server** running in Web Preview Mode (opens in your default browser)
 
-### 4. Running the Simulator
+### 4. Running on a Physical Android Device (over USB Debugging)
+To run and test the application directly on your connected physical Android phone with robust network-independent connectivity:
+1. Enable USB Debugging on your phone and connect it to your PC.
+2. Verify connection by running `adb devices` in your command line.
+3. Bind the local ports over the USB bridge to bypass Windows Firewall blocks:
+   ```bash
+   adb reverse tcp:8081 tcp:8081  # Metro Packager
+   adb reverse tcp:5000 tcp:5000  # Node Backend API
+   ```
+4. Open the app in Expo Go on your phone via the USB localhost deep-link:
+   ```bash
+   adb shell am start -a android.intent.action.VIEW -d "exp://localhost:8081"
+   ```
+
+### 5. Running the Simulator
 To test scam detection:
-1. Open the SafeCall interface in your browser.
+1. Open the SafeCall interface in your browser (or mobile client).
 2. Under the **Call Simulator** on the Dashboard, select **Digital Arrest - CBI Impersonation** or **Bank Fraud**.
 3. Press **Start Live Script**.
 4. Navigate to the **Scanner** tab. You will see transcripts stream in real-time. Watch the threat meter adjust and display safety alerts.
 5. Once the call finishes, navigate to the **Evidence** tab to view your saved dossier and download the PDF!
+
 ```,Description:
